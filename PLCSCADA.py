@@ -1,0 +1,99 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import time
+
+st.set_page_config(layout="wide", page_title="PLC без SCADA")
+
+st.title("❓ Может ли PLC работать без SCADA?")
+st.subheader("Тема: Демонстрация автономности контроллера и достаточности HMI панели")
+
+# Инициализация состояния установки
+if "plc_run" not in st.session_state:
+    st.session_state.plc_run = False
+if "pressure" not in st.session_state:
+    st.session_state.pressure = 20.0
+if "scada_connected" not in st.session_state:
+    st.session_state.scada_connected = False
+
+# --- ЛОГИКА PLC (Работает всегда, независимо от SCADA!) ---
+if st.session_state.plc_run:
+    # Имитируем рост давления при работе насоса
+    st.session_state.pressure += np.random.uniform(0.5, 2.5)
+    # Автоматическая защита PLC (Safety Logic):
+    if st.session_state.pressure > 80.0:
+        st.session_state.pressure = 20.0  # PLC сам сбросил давление клапаном
+        st.toast("⚡ Сработала аварийная логика PLC: Автоматический сброс давления!", icon="⚠️")
+else:
+    # Давление падает к норме, если насос выключен
+    if st.session_state.pressure > 20.0:
+        st.session_state.pressure -= 1.0
+
+# --- ИНТЕРФЕЙС STREAMLIT ---
+
+# Шаг 1: Управление сервером SCADA (Внешний фактор)
+st.markdown("### 🌐 Шаг 1: Управление инфраструктурой верхнего уровня")
+scada_switch = st.toggle("Включить центральный сервер SCADA (Диспетчерская завода)", value=st.session_state.scada_connected)
+st.session_state.scada_connected = scada_switch
+
+if st.session_state.scada_connected:
+    st.success("💻 SCADA-система подключена. Идет сбор архивов и аналитики с установки.")
+else:
+    st.warning("🔌 SCADA-система ОТКЛЮЧЕНА (Нет связи с сервером / Сервер на профилактике).")
+
+st.divider()
+
+# Шаг 2: Визуализация уровней управления
+col_hmi, col_scada = st.columns(2)
+
+# ЛОКАЛЬНЫЙ УРОВЕНЬ (PLC + HMI) - ОН РАБОТАЕТ ВСЕГДА
+with col_hmi:
+    st.markdown("### 📱 Локальный уровень (У станка)")
+    
+    # Оформляем блок как физическую HMI Панель
+    st.info("ФИЗИЧЕСКАЯ ПАНЕЛЬ ОПЕРАТОРА (HMI)")
+    
+    # Кнопки управления на HMI
+    hmi_btn_start = st.button("🟢 СТАРТ (Нажато на HMI)", use_container_width=True)
+    hmi_btn_stop = st.button("🔴 СТОП (Нажато на HMI)", use_container_width=True)
+    
+    if hmi_btn_start:
+        st.session_state.plc_run = True
+    if hmi_btn_stop:
+        st.session_state.plc_run = False
+        
+    # Индикаторы на HMI
+    status_text = "РАБОТА" if st.session_state.plc_run else "СТОП"
+    st.metric(label="Статус установки на HMI", value=status_text)
+    st.metric(label="Текущее давление (Датчик -> PLC -> HMI)", value=f"{st.session_state.pressure:.1f} бар")
+
+# ЦЕНТРАЛЬНЫЙ УРОВЕНЬ (SCADA) - ЗАВИСИТ ОТ СВЯЗИ
+with col_scada:
+    st.markdown("### 🖥️ Центральный уровень (Диспетчерская)")
+    st.info("АРМ ДИСПЕТЧЕРА (SCADA)")
+    
+    if st.session_state.scada_connected:
+        st.metric(label="Данные в SCADA: Статус", value="РАБОТА" if st.session_state.plc_run else "СТОП")
+        st.metric(label="Данные в SCADA: Давление", value=f"{st.session_state.pressure:.1f} бар")
+        st.caption("📈 Здесь строятся отчеты для директора и пишутся логи в базу данных.")
+    else:
+        st.error("❌ ЭКРАН СЛЕП")
+        st.caption("Диспетчер не видит установку, но сама установка функционирует в штатном режиме.")
+
+st.divider()
+
+# Вывод-обоснование для презентации темы
+st.markdown("### 📝 Главный вывод демонстрации:")
+if not st.session_state.scada_connected and st.session_state.plc_run:
+    st.success(
+        "🔥 **Доказательство успеха:** SCADA сейчас полностью отключена! "
+        "Однако оператор может запускать/останавливать процесс через **HMI**, а **PLC** успешно выполняет "
+        "технологический цикл и защищает оборудование от перегрева/перегрузки. "
+        "**Вывод: SCADA НЕ обязательна для работы локальной автоматики!**"
+    )
+elif st.session_state.scada_connected:
+    st.info("Сейчас включены оба уровня. Вы можете отключить SCADA тумблером выше, чтобы проверить автономность PLC.")
+
+# Цикл обновления экрана
+time.sleep(0.4)
+st.rerun()
